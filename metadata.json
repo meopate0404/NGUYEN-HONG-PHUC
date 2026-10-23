@@ -1,0 +1,6 @@
+{
+  "name": "Oanh Điền Karaoke",
+  "description": "Ứng dụng hát Karaoke chuẩn Android TV kèm Remote điều khiển chọn bài qua điện thoại bằng mã QR.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@layer base {
+  /* TV Remote focus ring for 10-foot Android TV navigation */
+  *:focus-visible {
+    outline: 3px solid #38bdf8 !important;
+    outline-offset: 2px !important;
+    box-shadow: 0 0 15px rgba(56, 189, 248, 0.6) !important;
+  }
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+
+/* Song title right-to-left marquee animation (slow, smooth, readable) */
+@keyframes marquee-rtl {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.animate-marquee {
+  display: inline-block;
+  white-space: nowrap;
+  animation: marquee-rtl 18s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+.animate-marquee-slow {
+  display: inline-block;
+  white-space: nowrap;
+  animation: marquee-rtl 25s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-slow:hover {
+  animation-play-state: paused;
+}
+
+/* Custom scrollbars for TV and mobile */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #141417;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333338;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #55555c;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
