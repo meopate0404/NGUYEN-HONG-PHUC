@@ -56,10 +56,33 @@ export const TVSearchModal: React.FC<Props> = ({
 
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(trimmed)}`);
+      const searchQuery = trimmed.toLowerCase().includes('karaoke') 
+        ? trimmed 
+        : `${trimmed} karaoke`;
+
+      const res = await fetch(
+        `https://pipedapi.kavin.rocks/search?q=${encodeURIComponent(searchQuery)}&filter=all`
+      );
+      
+      if (!res.ok) throw new Error('Network response was not ok');
+
       const data = await res.json();
-      if (data && Array.isArray(data.results)) {
-        setResults(data.results);
+
+      if (data && Array.isArray(data.items)) {
+        const formatted: KaraokeSong[] = data.items
+          .filter((item: any) => item.type === 'stream')
+          .map((item: any) => {
+            const videoId = item.url ? item.url.replace('/watch?v=', '') : '';
+            return {
+              id: videoId,
+              title: item.title || '',
+              artist: item.uploaderName || 'YouTube',
+              duration: '04:00',
+              genre: 'Nhạc Trẻ',
+              thumb: item.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            };
+          });
+        setResults(formatted);
       } else {
         setResults([]);
       }
@@ -92,11 +115,9 @@ export const TVSearchModal: React.FC<Props> = ({
         } catch (e) {}
       }
 
-      // Check / request mic permission if getUserMedia available
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          // Stop stream immediately so SpeechRecognition can bind exclusively
           stream.getTracks().forEach((track) => track.stop());
         } catch (permErr: any) {
           console.warn('Microphone permission check:', permErr);
@@ -171,14 +192,12 @@ export const TVSearchModal: React.FC<Props> = ({
     setIsListening(false);
   };
 
-  // Sync initial query or autoVoice on open
   useEffect(() => {
     if (isOpen) {
       if (initialQuery) {
         setQuery(initialQuery);
         performSearch(initialQuery);
       } else {
-        // Pre-load popular karaoke songs when opening with empty query
         performSearch('');
       }
       if (autoVoice) {
@@ -293,7 +312,6 @@ export const TVSearchModal: React.FC<Props> = ({
             )}
           </div>
 
-          {/* Voice Search with TV Remote */}
           <button
             onClick={isListening ? stopVoiceSearch : startVoiceSearch}
             className={`px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition shrink-0 ${
@@ -460,72 +478,4 @@ export const TVSearchModal: React.FC<Props> = ({
           {/* Results List (Right) */}
           <div className="md:col-span-7 p-4 overflow-y-auto space-y-2 bg-[#121214]">
             <div className="text-xs text-neutral-400 font-semibold mb-2 flex items-center justify-between">
-              <span>Kết quả YouTube ({results.length} bài hát)</span>
-              {isLoading && (
-                <span className="text-red-400 flex items-center gap-1 text-[11px]">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Đang tải từ YouTube...
-                </span>
-              )}
-            </div>
-
-            {results.length === 0 ? (
-              <div className="text-center py-16 text-neutral-400 text-sm flex flex-col items-center">
-                <Search className="w-10 h-10 text-neutral-600 mb-3" />
-                <div className="font-bold text-white text-base">Tìm Bài Hát Trên YouTube</div>
-                <div className="text-xs text-neutral-500 mt-1 max-w-sm">
-                  Nhập từ khóa bằng bàn phím ảo bên trái hoặc chọn các gợi ý nhanh phía trên!
-                </div>
-              </div>
-            ) : (
-              results.map((song) => (
-                <div
-                  key={song.id}
-                  className="p-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800/80 flex items-center justify-between gap-3 group transition"
-                >
-                  <img
-                    src={song.thumb}
-                    alt={song.title}
-                    className="w-18 h-12 object-cover rounded-lg shrink-0 border border-neutral-700"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-white truncate group-hover:text-red-400 transition">
-                      {song.title}
-                    </div>
-                    <div className="text-xs text-neutral-400 flex items-center gap-2 mt-0.5">
-                      <span>{song.artist}</span>
-                      <span>•</span>
-                      <span className="text-amber-400 font-medium">{song.genre}</span>
-                      <span>•</span>
-                      <span>{song.duration}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => {
-                        onSelectSong(song, false);
-                        onClose();
-                      }}
-                      className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-semibold rounded-lg border border-neutral-700 transition"
-                    >
-                      + Hàng chờ
-                    </button>
-                    <button
-                      onClick={() => {
-                        onSelectSong(song, true);
-                        onClose();
-                      }}
-                      className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg shadow transition"
-                    >
-                      Hát ngay
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+              <span>Kết
