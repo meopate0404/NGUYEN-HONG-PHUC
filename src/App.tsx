@@ -56,43 +56,51 @@ export default function App() {
   const queueRef = useRef<KaraokeSong[]>(queue);
   queueRef.current = queue;
 
-  // App & Mobile URL calculation (initialized synchronously)
+  // App & Mobile URL calculation (safely initialized)
   const [appUrl, setAppUrl] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return `${window.location.origin}${window.location.pathname}`;
-    }
+    try {
+      if (typeof window !== 'undefined' && window.location) {
+        return `${window.location.origin || ''}${window.location.pathname || ''}`;
+      }
+    } catch (e) {}
     return '';
   });
   const [mobileUrl, setMobileUrl] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return `${window.location.origin}${window.location.pathname}?room=6868&mode=mobile`;
-    }
+    try {
+      if (typeof window !== 'undefined' && window.location) {
+        return `${window.location.origin || ''}${window.location.pathname || ''}?room=6868&mode=mobile`;
+      }
+    } catch (e) {}
     return '';
   });
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const origin = window.location.origin;
-      const path = window.location.pathname;
-      const base = `${origin}${path}`;
-      setAppUrl(base);
-      setMobileUrl(`${base}?room=${roomCode}&mode=mobile`);
+    try {
+      if (typeof window !== 'undefined' && window.location) {
+        const origin = window.location.origin || '';
+        const path = window.location.pathname || '';
+        const base = `${origin}${path}`;
+        setAppUrl(base);
+        setMobileUrl(`${base}?room=${roomCode}&mode=mobile`);
 
-      // Read query params for room and mode
-      const params = new URLSearchParams(window.location.search);
-      const urlRoom = params.get('room');
-      const urlMode = params.get('mode');
+        // Read query params for room and mode
+        const params = new URLSearchParams(window.location.search || '');
+        const urlRoom = params.get('room');
+        const urlMode = params.get('mode');
 
-      if (urlRoom) {
-        setRoomCode(urlRoom.toUpperCase());
+        if (urlRoom) {
+          setRoomCode(urlRoom.toUpperCase());
+        }
+
+        // Luôn luôn để app chạy mặc định ở tab 'màn hình tv', chỉ vào mobile khi quét QR (có ?mode=mobile)
+        if (urlMode === 'mobile') {
+          setMode('mobile');
+        } else {
+          setMode('tv');
+        }
       }
-
-      // Luôn luôn để app chạy mặc định ở tab 'màn hình tv', chỉ vào mobile khi quét QR (có ?mode=mobile)
-      if (urlMode === 'mobile') {
-        setMode('mobile');
-      } else {
-        setMode('tv');
-      }
+    } catch (e) {
+      console.warn('URL parsing error:', e);
     }
   }, []);
 

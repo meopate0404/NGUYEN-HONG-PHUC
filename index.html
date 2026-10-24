@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="vi">
+<html lang="vi" style="background-color: #0a0a0c; color: #ffffff;">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -9,18 +9,93 @@
     <meta property="og:description" content="Ứng dụng hát Karaoke chuẩn Android TV kèm Remote điều khiển chọn bài qua điện thoại bằng mã QR." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#0f0f0f" />
+    <meta name="theme-color" content="#0a0a0c" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Oanh Điền Karaoke" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <link rel="apple-touch-icon" href="/pwa-192x192.png" />
-    <!-- YouTube iFrame API -->
-    <script src="https://www.youtube.com/iframe_api"></script>
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="apple-touch-icon" href="./pwa-192x192.png" />
+
+    <!-- Style fallback to guarantee black background on all Android TVs / WebViews immediately -->
+    <style>
+      html, body {
+        background-color: #0a0a0c !important;
+        color: #ffffff !important;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow-x: hidden;
+        -webkit-font-smoothing: antialiased;
+      }
+      #root {
+        min-height: 100vh;
+        width: 100%;
+        background-color: #0a0a0c;
+      }
+      @keyframes tvPulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.7; transform: scale(1.05); }
+      }
+      .tv-boot-pulse {
+        animation: tvPulse 1.8s infinite ease-in-out;
+      }
+    </style>
+
+    <!-- Async non-blocking load for YouTube iFrame API to prevent blocking HTML parser on TV -->
+    <script>
+      (function() {
+        var tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        tag.async = true;
+        var firstScriptTag = document.getElementsByTagName('script')[0];
+        if (firstScriptTag && firstScriptTag.parentNode) {
+          firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+        } else {
+          document.head.appendChild(tag);
+        }
+      })();
+    </script>
   </head>
-  <body class="bg-[#0f0f0f] text-white antialiased select-none overflow-x-hidden">
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+  <body class="bg-[#0a0a0c] text-white antialiased select-none overflow-x-hidden">
+    <div id="root">
+      <!-- Dark TV Booting Splash Screen: Visible while bundle downloads on TV Wi-Fi -->
+      <div id="tv-boot-splash" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100vw; background-color: #0a0a0c; text-align: center; padding: 24px; box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif;">
+        <div style="width: 80px; height: 80px; border-radius: 24px; background: rgba(220, 38, 38, 0.2); border: 2px solid #ef4444; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;" class="tv-boot-pulse">
+          <svg style="width: 40px; height: 40px; color: #ef4444; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;" viewBox="0 0 24 24">
+            <path d="m12 8-9.04 9.06a2.82 2.82 0 1 0 3.98 3.98L16 12"/>
+            <circle cx="17" cy="7" r="5"/>
+          </svg>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 900; margin: 0 0 8px 0; color: #ffffff; letter-spacing: 0.5px;">OANH ĐIỀN KARAOKE TV</h1>
+        <p style="font-size: 14px; color: #a1a1aa; margin: 0 0 24px 0;">Đang khởi động ứng dụng Android TV...</p>
+        <div style="display: inline-block; width: 36px; height: 36px; border: 3px solid rgba(239, 68, 68, 0.2); border-top-color: #ef4444; border-radius: 50%; animation: tvSpin 0.8s linear infinite;"></div>
+        <style>
+          @keyframes tvSpin { to { transform: rotate(360deg); } }
+        </style>
+
+        <!-- Fallback error container if older browser cannot parse bundle -->
+        <div id="tv-boot-error" style="display: none; margin-top: 24px; max-width: 480px; background: #1c1917; border: 1px solid #7f1d1d; border-radius: 12px; padding: 16px; color: #fca5a5; font-size: 13px; text-align: left;">
+          <div style="font-weight: bold; margin-bottom: 6px;">⚠️ Thông báo khởi động:</div>
+          <div id="tv-boot-error-msg"></div>
+          <button onclick="window.location.reload()" style="margin-top: 12px; padding: 8px 16px; background: #dc2626; color: #fff; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">Tải lại trang</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Script error safety net -->
+    <script>
+      window.addEventListener('error', function(e) {
+        var errEl = document.getElementById('tv-boot-error');
+        var msgEl = document.getElementById('tv-boot-error-msg');
+        if (errEl && msgEl && (!window.React || !document.querySelector('main'))) {
+          errEl.style.display = 'block';
+          msgEl.innerText = e.message || 'Lỗi tải tệp mã nguồn ứng dụng trên TV.';
+        }
+      });
+    </script>
+
+    <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>

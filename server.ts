@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { POPULAR_KARAOKE_SONGS, searchVerifiedCatalog } from './src/data/karaokeCatalog';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -171,7 +172,7 @@ app.get('/api/youtube/search', async (req: Request, res: Response) => {
   try {
     const rawQ = ((req.query.q as string) || '').trim();
     if (!rawQ) {
-      return res.json({ query: '', results: [] });
+      return res.json({ query: '', results: POPULAR_KARAOKE_SONGS });
     }
 
     // Direct YouTube URL or 11-char Video ID
@@ -304,10 +305,14 @@ app.get('/api/youtube/search', async (req: Request, res: Response) => {
       console.warn('Direct YouTube fetch error:', fetchErr);
     }
 
+    if (results.length === 0) {
+      results = searchVerifiedCatalog(rawQ);
+    }
+
     res.json({ query: rawQ, results });
   } catch (err: any) {
     console.error('YouTube search error:', err);
-    res.json({ query: req.query.q || '', results: [] });
+    res.json({ query: req.query.q || '', results: searchVerifiedCatalog(String(req.query.q || '')) });
   }
 });
 

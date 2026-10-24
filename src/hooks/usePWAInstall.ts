@@ -12,13 +12,24 @@ export function usePWAInstall() {
 
   useEffect(() => {
     // Detect standalone mode (already installed or running in TV app container)
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+    let isStandalone = false;
+    try {
+      if (typeof window !== 'undefined') {
+        if (typeof window.matchMedia === 'function') {
+          isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+        }
+        if (!isStandalone && (window.navigator as unknown as { standalone?: boolean })?.standalone === true) {
+          isStandalone = true;
+        }
+      }
+    } catch (e) {}
     setIsInstalled(isStandalone);
 
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
+    let isIOSDevice = false;
+    try {
+      const userAgent = window?.navigator?.userAgent?.toLowerCase() || '';
+      isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
+    } catch (e) {}
     setIsIOS(isIOSDevice);
 
     const handleBeforeInstallPrompt = (e: Event) => {

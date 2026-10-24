@@ -64,5 +64,9 @@ export default defineConfig(() => {
     server: {
       hmr: false,
     },
+    build: {
+      target: ['es2015', 'chrome64', 'edge79', 'firefox67', 'safari12'],
+      cssTarget: 'chrome61',
+    },
   };
 });

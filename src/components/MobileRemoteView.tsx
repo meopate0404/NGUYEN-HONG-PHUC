@@ -22,7 +22,7 @@ import {
   ExternalLink,
   Flame,
 } from 'lucide-react';
-import { KaraokeSong } from '../data/karaokeCatalog';
+import { KaraokeSong, POPULAR_KARAOKE_SONGS, searchVerifiedCatalog } from '../data/karaokeCatalog';
 import { sfx } from '../utils/audioEffects';
 
 interface Props {
@@ -83,7 +83,7 @@ export const MobileRemoteView: React.FC<Props> = ({
   const [addedToast, setAddedToast] = useState<string | null>(null);
 
   // Live YouTube search states
-  const [ytResults, setYtResults] = useState<KaraokeSong[]>([]);
+  const [ytResults, setYtResults] = useState<KaraokeSong[]>(POPULAR_KARAOKE_SONGS);
   const [isLoading, setIsLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -117,26 +117,34 @@ export const MobileRemoteView: React.FC<Props> = ({
     }
   };
 
-  // Perform Live YouTube Search directly
+  // Perform Live YouTube Search directly with instant local fallback
   const searchYouTube = async (queryText: string) => {
-    if (!queryText.trim()) {
-      setYtResults([]);
+    const trimmed = queryText.trim();
+    if (!trimmed) {
+      setYtResults(POPULAR_KARAOKE_SONGS);
       setIsLoading(false);
       return;
     }
 
+    // Instantly match verified catalog so mobile users get 0ms response
+    const localMatches = searchVerifiedCatalog(trimmed);
+    setYtResults(localMatches);
     setIsLoading(true);
+
     try {
-      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(queryText)}`);
-      const data = await res.json();
-      if (data && Array.isArray(data.results)) {
-        setYtResults(data.results);
-      } else {
-        setYtResults([]);
+      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(trimmed)}`, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data && Array.isArray(data.results) && data.results.length > 0) {
+          setYtResults(data.results);
+        }
       }
     } catch (err) {
-      console.error('YouTube search error:', err);
-      setYtResults([]);
+      console.warn('YouTube search API fetch warning, using verified songs:', err);
     } finally {
       setIsLoading(false);
     }
