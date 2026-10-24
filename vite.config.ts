@@ -6,6 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
   return {
+    base: './', // 👈 THÊM DÒNG NÀY ĐỂ FIX LỖI TRẮNG MÀN HÌNH
     plugins: [
       react(),
       tailwindcss(),
