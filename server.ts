@@ -42,6 +42,8 @@ interface RoomState {
 const rooms = new Map<string, RoomState>();
 const roomSubscribers = new Map<string, Set<Response>>();
 
+
+
 function getOrCreateRoom(roomId: string): RoomState {
   const normId = (roomId || 'default').toUpperCase().trim();
   if (!rooms.has(normId)) {
@@ -169,7 +171,7 @@ app.get('/api/youtube/search', async (req: Request, res: Response) => {
   try {
     const rawQ = ((req.query.q as string) || '').trim();
     if (!rawQ) {
-      return res.json({ results: [] });
+      return res.json({ query: '', results: [] });
     }
 
     // Direct YouTube URL or 11-char Video ID
@@ -186,6 +188,7 @@ app.get('/api/youtube/search', async (req: Request, res: Response) => {
 
     if (directId) {
       return res.json({
+        query: rawQ,
         results: [
           {
             id: directId,
@@ -204,73 +207,107 @@ app.get('/api/youtube/search', async (req: Request, res: Response) => {
     const searchQuery = /karaoke/i.test(rawQ) ? rawQ : `${rawQ} karaoke`;
 
     const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
-    const response = await fetch(ytUrl, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
-      },
-    });
+    let results: any[] = [];
 
-    const html = await response.text();
-    const match = html.match(/ytInitialData\s*=\s*({.+?});<\/script>/);
+    try {
+      const response = await fetch(ytUrl, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Cookie': 'CONSENT=YES+1; SOCS=CAESEwgDEgk2ODEyNDc4NjQaAmVuIAEaBgiA_LyaBg',
+        },
+      });
 
-    const results: any[] = [];
-    if (match) {
-      try {
-        const data = JSON.parse(match[1]);
-        const contents =
-          data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
-        const itemSection = contents?.find((c: any) => c.itemSectionRenderer)?.itemSectionRenderer;
+      const html = await response.text();
+      
+      // Strategy 1: Match ytInitialData object
+      const match = html.match(/ytInitialData\s*=\s*({.+?});<\/script>/) ||
+                    html.match(/var\s+ytInitialData\s*=\s*({.+?});/) ||
+                    html.match(/window\["ytInitialData"\]\s*=\s*({.+?});/);
 
-        if (itemSection?.contents) {
-          for (const item of itemSection.contents) {
-            const v = item.videoRenderer;
-            if (!v || !v.videoId) continue;
+      if (match) {
+        try {
+          const data = JSON.parse(match[1]);
+          const contents =
+            data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
+          const itemSection = contents?.find((c: any) => c.itemSectionRenderer)?.itemSectionRenderer;
 
-            const title =
-              v.title?.runs?.map((r: any) => r.text).join('') || v.title?.simpleText || '';
-            const artist = v.ownerText?.runs?.[0]?.text || 'Karaoke Beat';
-            const duration = v.lengthText?.simpleText || '04:00';
-            const views = v.viewCountText?.simpleText || '';
-            const thumb =
-              v.thumbnail?.thumbnails?.[v.thumbnail.thumbnails.length - 1]?.url ||
-              `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`;
+          if (itemSection?.contents) {
+            for (const item of itemSection.contents) {
+              const v = item.videoRenderer;
+              if (!v || !v.videoId) continue;
 
-            let tone = '';
-            if (/tone nam|giọng nam/i.test(title)) tone = 'Tone Nam';
-            else if (/tone nữ|giọng nữ/i.test(title)) tone = 'Tone Nữ';
-            else if (/song ca/i.test(title)) tone = 'Song Ca';
+              const title =
+                v.title?.runs?.map((r: any) => r.text).join('') || v.title?.simpleText || '';
+              const artist = v.ownerText?.runs?.[0]?.text || 'Karaoke Beat';
+              const duration = v.lengthText?.simpleText || '04:00';
+              const views = v.viewCountText?.simpleText || '';
+              const thumb =
+                v.thumbnail?.thumbnails?.[v.thumbnail.thumbnails.length - 1]?.url ||
+                `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`;
 
-            let genre = 'Nhạc Trẻ';
-            if (/bolero|trữ tình|nhạc vàng/i.test(title)) genre = 'Bolero';
-            else if (/remix|dj|vinahey|nonstop/i.test(title)) genre = 'Remix';
-            else if (/song ca/i.test(title)) genre = 'Song Ca';
-            else if (/quê hương|cách mạng|đất nước/i.test(title)) genre = 'Quê Hương';
+              let tone = '';
+              if (/tone nam|giọng nam/i.test(title)) tone = 'Tone Nam';
+              else if (/tone nữ|giọng nữ/i.test(title)) tone = 'Tone Nữ';
+              else if (/song ca/i.test(title)) tone = 'Song Ca';
 
+              let genre = 'Nhạc Trẻ';
+              if (/bolero|trữ tình|nhạc vàng/i.test(title)) genre = 'Bolero';
+              else if (/remix|dj|vinahey|nonstop/i.test(title)) genre = 'Remix';
+              else if (/song ca/i.test(title)) genre = 'Song Ca';
+              else if (/quê hương|cách mạng|đất nước/i.test(title)) genre = 'Quê Hương';
+
+              results.push({
+                id: v.videoId,
+                title,
+                artist,
+                duration,
+                views,
+                genre,
+                tone,
+                thumb,
+              });
+
+              if (results.length >= 25) break;
+            }
+          }
+        } catch (parseErr) {
+          console.error('Error parsing ytInitialData:', parseErr);
+        }
+      }
+
+      // Strategy 2: If strategy 1 returned no results, scrape video patterns directly
+      if (results.length === 0) {
+        const regex = /"videoId":"([a-zA-Z0-9_-]{11})".+?"title":\{"runs":\[\{"text":"([^"]+)"\}\]/g;
+        let m: RegExpExecArray | null;
+        const seen = new Set<string>();
+        while ((m = regex.exec(html)) !== null && results.length < 20) {
+          const videoId = m[1];
+          const title = m[2];
+          if (!seen.has(videoId)) {
+            seen.add(videoId);
             results.push({
-              id: v.videoId,
+              id: videoId,
               title,
-              artist,
-              duration,
-              views,
-              genre,
-              tone,
-              thumb,
+              artist: 'Karaoke Beat Chuẩn',
+              duration: '04:00',
+              views: 'YouTube',
+              genre: /bolero/i.test(title) ? 'Bolero' : /remix/i.test(title) ? 'Remix' : 'Nhạc Trẻ',
+              tone: /tone nam/i.test(title) ? 'Tone Nam' : /tone nữ/i.test(title) ? 'Tone Nữ' : '',
+              thumb: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
             });
-
-            if (results.length >= 25) break;
           }
         }
-      } catch (parseErr) {
-        console.error('Error parsing ytInitialData:', parseErr);
       }
+    } catch (fetchErr) {
+      console.warn('Direct YouTube fetch error:', fetchErr);
     }
 
     res.json({ query: rawQ, results });
   } catch (err: any) {
     console.error('YouTube search error:', err);
-    res.status(500).json({ error: 'Search failed', results: [] });
+    res.json({ query: req.query.q || '', results: [] });
   }
 });
 

@@ -22,7 +22,7 @@ import {
   ExternalLink,
   Flame,
 } from 'lucide-react';
-import { KaraokeSong, POPULAR_KARAOKE_SONGS } from '../data/karaokeCatalog';
+import { KaraokeSong } from '../data/karaokeCatalog';
 import { sfx } from '../utils/audioEffects';
 
 interface Props {
@@ -106,6 +106,17 @@ export const MobileRemoteView: React.FC<Props> = ({
     setTimeout(() => setAddedToast(null), 2000);
   };
 
+  // Subtle haptic vibration helper for tactile remote feedback
+  const triggerHaptic = (pattern: number | number[] = 25) => {
+    try {
+      if (typeof window !== 'undefined' && 'navigator' in window && 'vibrate' in navigator) {
+        navigator.vibrate(pattern);
+      }
+    } catch {
+      // Non-blocking fallback for browsers without vibration support
+    }
+  };
+
   // Perform Live YouTube Search directly
   const searchYouTube = async (queryText: string) => {
     if (!queryText.trim()) {
@@ -164,12 +175,14 @@ export const MobileRemoteView: React.FC<Props> = ({
   };
 
   const handleSelectSuggestion = (sug: string) => {
+    triggerHaptic(20);
     setSearchQuery(sug);
     setShowSuggestions(false);
     searchYouTube(sug);
   };
 
   const handleGenreClick = (genre: { label: string; query: string }) => {
+    triggerHaptic(15);
     setSelectedGenre(genre.label);
     if (!genre.query) {
       setSearchQuery('');
@@ -182,6 +195,7 @@ export const MobileRemoteView: React.FC<Props> = ({
 
   // Voice Search via Web Speech API
   const handleVoiceSearch = () => {
+    triggerHaptic(30);
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -196,6 +210,7 @@ export const MobileRemoteView: React.FC<Props> = ({
       setIsListening(true);
 
       recognition.onresult = (event: any) => {
+        triggerHaptic([25, 40]);
         const text = event.results[0][0].transcript;
         setSearchQuery(text);
         setIsListening(false);
@@ -353,7 +368,10 @@ export const MobileRemoteView: React.FC<Props> = ({
       {/* TABS SWITCHER */}
       <div className="flex bg-[#18181b] border-b border-neutral-800 text-xs shrink-0">
         <button
-          onClick={() => setActiveTab('search')}
+          onClick={() => {
+            triggerHaptic(20);
+            setActiveTab('search');
+          }}
           className={`flex-1 py-2.5 text-center font-bold border-b-2 flex items-center justify-center gap-1.5 transition ${
             activeTab === 'search'
               ? 'border-red-500 text-white'
@@ -365,7 +383,10 @@ export const MobileRemoteView: React.FC<Props> = ({
         </button>
 
         <button
-          onClick={() => setActiveTab('queue')}
+          onClick={() => {
+            triggerHaptic(20);
+            setActiveTab('queue');
+          }}
           className={`flex-1 py-2.5 text-center font-bold border-b-2 flex items-center justify-center gap-1.5 transition relative ${
             activeTab === 'queue'
               ? 'border-red-500 text-white'
@@ -377,7 +398,10 @@ export const MobileRemoteView: React.FC<Props> = ({
         </button>
 
         <button
-          onClick={() => setActiveTab('sfx')}
+          onClick={() => {
+            triggerHaptic(20);
+            setActiveTab('sfx');
+          }}
           className={`flex-1 py-2.5 text-center font-bold border-b-2 flex items-center justify-center gap-1.5 transition ${
             activeTab === 'sfx'
               ? 'border-red-500 text-white'
@@ -455,6 +479,7 @@ export const MobileRemoteView: React.FC<Props> = ({
                   <div className="flex flex-col gap-1.5 shrink-0">
                     <button
                       onClick={() => {
+                        triggerHaptic(35);
                         onAddToQueue(song, true);
                         showToast(`Đang ưu tiên hát: "${song.title}"`);
                       }}
@@ -464,6 +489,7 @@ export const MobileRemoteView: React.FC<Props> = ({
                     </button>
                     <button
                       onClick={() => {
+                        triggerHaptic(25);
                         onAddToQueue(song, false);
                         showToast(`Đã thêm vào hàng chờ: "${song.title}"`);
                       }}
@@ -532,17 +558,23 @@ export const MobileRemoteView: React.FC<Props> = ({
                   <div className="flex items-center gap-1 shrink-0">
                     {idx > 0 && (
                       <button
-                        onClick={() => onPrioritize(idx)}
+                        onClick={() => {
+                          triggerHaptic(30);
+                          onPrioritize(idx);
+                        }}
                         title="Đẩy lên đầu hàng chờ"
-                        className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-amber-400 rounded-lg text-xs"
+                        className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-amber-400 rounded-lg text-xs active:scale-90 transition"
                       >
                         <ArrowUp className="w-3.5 h-3.5" />
                       </button>
                     )}
                     <button
-                      onClick={() => onRemoveFromQueue(idx)}
+                      onClick={() => {
+                        triggerHaptic(25);
+                        onRemoveFromQueue(idx);
+                      }}
                       title="Xóa bài"
-                      className="p-1.5 bg-neutral-800 hover:bg-red-600/30 text-red-400 rounded-lg text-xs"
+                      className="p-1.5 bg-neutral-800 hover:bg-red-600/30 text-red-400 rounded-lg text-xs active:scale-90 transition"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -563,6 +595,7 @@ export const MobileRemoteView: React.FC<Props> = ({
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => {
+                  triggerHaptic([30, 40, 30]);
                   sfx.playApplause(2.5);
                   onSendSfx('applause');
                   showToast('Đã phát tiếng vỗ tay lên TV! 👏');
@@ -575,6 +608,7 @@ export const MobileRemoteView: React.FC<Props> = ({
 
               <button
                 onClick={() => {
+                  triggerHaptic([35, 45, 35]);
                   sfx.playAirHorn();
                   onSendSfx('airhorn');
                   showToast('Đã hú còi cực bốc lên TV! 📢');
@@ -587,6 +621,7 @@ export const MobileRemoteView: React.FC<Props> = ({
 
               <button
                 onClick={() => {
+                  triggerHaptic(35);
                   sfx.playWhistle();
                   onSendSfx('whistle');
                   showToast('Đã huýt sáo cổ vũ lên TV! 🎺');
@@ -599,6 +634,7 @@ export const MobileRemoteView: React.FC<Props> = ({
 
               <button
                 onClick={() => {
+                  triggerHaptic(30);
                   sfx.playChime();
                   onSendSfx('chime');
                   showToast('Đã gõ chuông chúc mừng! 🔔');
@@ -613,6 +649,7 @@ export const MobileRemoteView: React.FC<Props> = ({
             <div className="pt-2">
               <button
                 onClick={() => {
+                  triggerHaptic([40, 50, 40, 50, 60]);
                   onTriggerScore();
                   showToast('Đang mở màn hình chấm điểm pháo hoa trên TV! 🏆');
                 }}
@@ -636,6 +673,7 @@ export const MobileRemoteView: React.FC<Props> = ({
           </div>
           <button
             onClick={() => {
+              triggerHaptic(25);
               sfx.playApplause(2);
               onSendSfx('applause');
             }}
@@ -648,7 +686,10 @@ export const MobileRemoteView: React.FC<Props> = ({
         {/* Main playback buttons */}
         <div className="flex items-center justify-between px-2 pt-0.5">
           <button
-            onClick={onReplay}
+            onClick={() => {
+              triggerHaptic(25);
+              onReplay();
+            }}
             title="Hát lại từ đầu"
             className="w-11 h-11 rounded-full bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center text-white border border-neutral-700 active:scale-90 transition"
           >
@@ -656,7 +697,10 @@ export const MobileRemoteView: React.FC<Props> = ({
           </button>
 
           <button
-            onClick={onTogglePlay}
+            onClick={() => {
+              triggerHaptic(30);
+              onTogglePlay();
+            }}
             title="Phát / Tạm dừng"
             className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center text-white shadow-lg shadow-red-900/60 active:scale-95 transition"
           >
@@ -664,7 +708,10 @@ export const MobileRemoteView: React.FC<Props> = ({
           </button>
 
           <button
-            onClick={onPlayNext}
+            onClick={() => {
+              triggerHaptic([25, 40, 25]);
+              onPlayNext();
+            }}
             title="Qua bài kế tiếp"
             className="w-11 h-11 rounded-full bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white flex items-center justify-center border border-red-500/40 active:scale-90 transition"
           >
@@ -672,7 +719,10 @@ export const MobileRemoteView: React.FC<Props> = ({
           </button>
 
           <button
-            onClick={onToggleMute}
+            onClick={() => {
+              triggerHaptic(20);
+              onToggleMute();
+            }}
             title="Tắt tiếng / Bật tiếng"
             className="w-11 h-11 rounded-full bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center text-white border border-neutral-700 active:scale-90 transition"
           >

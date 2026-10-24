@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { Search, Delete, Space, Mic, X, Music2, Loader2, Sparkles } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Search, Delete, Space, Mic, X, Music2, Loader2, Sparkles, Volume2 } from 'lucide-react';
 import { KaraokeSong } from '../data/karaokeCatalog';
 
 interface Props {
@@ -47,7 +47,8 @@ export const TVSearchModal: React.FC<Props> = ({
   const recognitionRef = useRef<any>(null);
 
   const performSearch = async (val: string) => {
-    if (!val.trim()) {
+    const trimmed = val.trim();
+    if (!trimmed) {
       setResults([]);
       setIsLoading(false);
       return;
@@ -55,7 +56,7 @@ export const TVSearchModal: React.FC<Props> = ({
 
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(val)}`);
+      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(trimmed)}`);
       const data = await res.json();
       if (data && Array.isArray(data.results)) {
         setResults(data.results);
@@ -63,7 +64,7 @@ export const TVSearchModal: React.FC<Props> = ({
         setResults([]);
       }
     } catch (e) {
-      console.error(e);
+      console.warn('Search fetch error:', e);
       setResults([]);
     } finally {
       setIsLoading(false);
@@ -71,26 +72,46 @@ export const TVSearchModal: React.FC<Props> = ({
   };
 
   // Voice Search via Web Speech API (supported on TV Remotes, Android TV & Chrome)
-  const startVoiceSearch = () => {
+  const startVoiceSearch = async () => {
     setVoiceError(null);
+    setVoiceTranscript('');
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      setVoiceError('Trình duyệt chưa hỗ trợ mic TV. Bạn hãy dùng bàn phím ảo bên dưới.');
-      setTimeout(() => setVoiceError(null), 4000);
+      setVoiceError(
+        'Trình duyệt TV chưa hỗ trợ Web Speech trực tiếp. Quý khách có thể bấm chọn nhanh câu lệnh giọng nói mẫu bên dưới!'
+      );
       return;
     }
 
     try {
       if (recognitionRef.current) {
-        recognitionRef.current.abort();
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+      }
+
+      // Check / request mic permission if getUserMedia available
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          // Stop stream immediately so SpeechRecognition can bind exclusively
+          stream.getTracks().forEach((track) => track.stop());
+        } catch (permErr: any) {
+          console.warn('Microphone permission check:', permErr);
+          if (permErr?.name === 'NotAllowedError' || permErr?.name === 'PermissionDeniedError') {
+            setVoiceError('Quyền Micro đang bị chặn. Vui lòng cho phép quyền micro trên trình duyệt/TV.');
+            return;
+          }
+        }
       }
 
       const recognition = new SpeechRecognition();
       recognition.lang = 'vi-VN';
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
+      recognition.continuous = false;
 
       recognition.onstart = () => {
         setIsListening(true);
@@ -120,11 +141,12 @@ export const TVSearchModal: React.FC<Props> = ({
         console.warn('Speech recognition error:', event.error);
         setIsListening(false);
         if (event.error === 'not-allowed') {
-          setVoiceError('Vui lòng cấp quyền Microphone trên thiết bị để nói');
+          setVoiceError('Vui lòng cấp quyền Microphone trên TV hoặc thiết bị để nói');
+        } else if (event.error === 'no-speech') {
+          setVoiceError('Chưa nghe thấy giọng nói. Quý khách vui lòng nói lại hoặc bấm câu mẫu');
         } else if (event.error !== 'aborted') {
-          setVoiceError('Không nghe rõ, vui lòng bấm nói lại hoặc dùng bàn phím');
+          setVoiceError('Không nghe rõ hoặc TV chưa hỗ trợ tiếng Việt. Quý khách có thể bấm câu mẫu bên dưới');
         }
-        setTimeout(() => setVoiceError(null), 3500);
       };
 
       recognition.onend = () => {
@@ -133,32 +155,34 @@ export const TVSearchModal: React.FC<Props> = ({
 
       recognitionRef.current = recognition;
       recognition.start();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error starting speech recognition:', err);
       setIsListening(false);
-      setVoiceError('Lỗi khởi động nhận diện giọng nói');
-      setTimeout(() => setVoiceError(null), 3500);
+      setVoiceError('Không thể khởi động nhận diện: ' + (err?.message || 'Lỗi micro'));
     }
   };
 
   const stopVoiceSearch = () => {
     if (recognitionRef.current) {
-      recognitionRef.current.abort();
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {}
     }
     setIsListening(false);
   };
 
   // Sync initial query or autoVoice on open
-  React.useEffect(() => {
+  useEffect(() => {
     if (isOpen) {
       if (initialQuery) {
         setQuery(initialQuery);
         performSearch(initialQuery);
+      } else {
+        // Pre-load popular karaoke songs when opening with empty query
+        performSearch('');
       }
       if (autoVoice) {
-        setTimeout(() => {
-          startVoiceSearch();
-        }, 300);
+        startVoiceSearch();
       }
     } else {
       stopVoiceSearch();
@@ -318,8 +342,34 @@ export const TVSearchModal: React.FC<Props> = ({
         )}
 
         {voiceError && (
-          <div className="mx-4 mt-2 p-2.5 bg-amber-950/60 border border-amber-600/60 rounded-xl text-xs text-amber-200">
-            ⚠️ {voiceError}
+          <div className="mx-4 mt-2 p-3 bg-neutral-900 border border-amber-600/70 rounded-xl text-xs text-amber-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold flex items-center gap-1.5 text-amber-300">
+                <span>🎙️</span> {voiceError}
+              </span>
+              <button
+                onClick={() => setVoiceError(null)}
+                className="text-neutral-400 hover:text-white text-xs font-bold px-2 py-0.5 rounded bg-neutral-800"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="pt-1 flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-neutral-400 font-semibold">Bấm thử nhanh lệnh thoại:</span>
+              {['Hoa Nở Không Màu', 'Cắt Đôi Nỗi Sầu', 'Duyên Phận Bolero', 'Ai Chung Tình Được Mãi', 'Tone Nam', 'Tone Nữ'].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => {
+                    setVoiceError(null);
+                    setQuery(s);
+                    performSearch(s);
+                  }}
+                  className="px-2.5 py-1 bg-red-950/60 hover:bg-red-600 border border-red-700/60 hover:border-red-500 rounded-lg text-white font-medium text-[11px] transition"
+                >
+                  🗣️ "{s}"
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

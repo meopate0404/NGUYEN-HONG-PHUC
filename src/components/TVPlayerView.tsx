@@ -17,6 +17,8 @@ import {
   Music,
   Mic2,
   Award,
+  ShieldCheck,
+  MousePointer,
 } from 'lucide-react';
 import { KaraokeSong } from '../data/karaokeCatalog';
 
@@ -37,11 +39,15 @@ interface Props {
   onRemoveFromQueue: (index: number) => void;
   onPrioritize: (index: number) => void;
   onOpenSearch: (initialQuery?: string, autoVoice?: boolean) => void;
-  onOpenInstaller: () => void;
   onTriggerScore: () => void;
+  onOpenGoogleAuth?: () => void;
+  isInteractiveMode?: boolean;
+  onToggleInteractiveMode?: () => void;
   currentTime?: number;
   duration?: number;
   onSeek?: (seconds: number) => void;
+  useDirectIframe?: boolean;
+  onSelectSong?: (song: KaraokeSong, playNow: boolean) => void;
 }
 
 const formatTime = (sec: number): string => {
@@ -68,11 +74,15 @@ export const TVPlayerView: React.FC<Props> = ({
   onRemoveFromQueue,
   onPrioritize,
   onOpenSearch,
-  onOpenInstaller,
   onTriggerScore,
+  onOpenGoogleAuth,
+  isInteractiveMode = false,
+  onToggleInteractiveMode,
   currentTime = 0,
   duration = 0,
   onSeek,
+  useDirectIframe = false,
+  onSelectSong,
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -238,27 +248,27 @@ export const TVPlayerView: React.FC<Props> = ({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (isVoiceListening) {
-              stopVoiceSearch();
-            } else {
-              startVoiceSearch();
-            }
+            onOpenSearch('', true);
           }}
-          className={`px-3.5 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 transition shadow shrink-0 border ${
-            isVoiceListening
-              ? 'bg-red-600 text-white border-red-500 animate-pulse shadow-lg shadow-red-600/50'
-              : 'bg-red-950/40 hover:bg-red-600 text-red-300 hover:text-white border-red-600/50'
-          }`}
+          className="px-3.5 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 transition shadow shrink-0 border bg-red-950/40 hover:bg-red-600 text-red-300 hover:text-white border-red-600/50"
           title="Tìm kiếm bằng giọng nói qua Micro Remote TV hoặc tai nghe"
         >
-          <Mic className={`w-4 h-4 ${isVoiceListening ? 'animate-bounce text-white' : 'text-red-400'}`} />
-          <span className="hidden sm:inline font-bold">
-            {isVoiceListening ? 'Đang nghe...' : 'Nói tìm bài'}
-          </span>
+          <Mic className="w-4 h-4 text-red-400" />
+          <span className="hidden sm:inline font-bold">Nói tìm bài</span>
         </button>
 
         {/* Quick action buttons */}
         <div className="flex items-center gap-2 shrink-0">
+          {onOpenGoogleAuth && (
+            <button
+              onClick={onOpenGoogleAuth}
+              title="Đăng nhập tài khoản Google & Khắc phục CAPTCHA"
+              className="px-3 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white rounded-xl text-xs font-bold border border-neutral-700 transition flex items-center gap-1.5 shadow"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span className="hidden sm:inline">Đăng nhập Google / CAPTCHA</span>
+            </button>
+          )}
           <button
             onClick={onTriggerScore}
             title="Chấm điểm Karaoke"
@@ -281,44 +291,119 @@ export const TVPlayerView: React.FC<Props> = ({
       <div className="flex-1 flex flex-row p-2.5 gap-2.5 min-h-0 overflow-hidden">
         {/* SCALED-UP VIDEO PLAYER VIEW (Takes maximal space) */}
         <div className="flex-1 bg-black rounded-2xl overflow-hidden border border-neutral-800 shadow-2xl relative flex items-center justify-center group">
-          {/* YouTube Player Container with transparent click catcher (removes YouTube buttons, recommendations, and branding) */}
+          {/* Interactive Mouse / CAPTCHA banner indicator */}
+          {isInteractiveMode && (
+            <div className="absolute top-3 left-3 right-3 z-30 bg-amber-500 text-black font-extrabold px-4 py-2 rounded-xl shadow-2xl flex items-center justify-between text-xs animate-in slide-in-from-top duration-200">
+              <div className="flex items-center gap-2">
+                <MousePointer className="w-4 h-4" />
+                <span>
+                  Đang bật chế độ chuột tương tác TV! Dùng chuột / remote nhấp thẳng vào ô CAPTCHA hoặc nút Đăng nhập trên video.
+                </span>
+              </div>
+              {onToggleInteractiveMode && (
+                <button
+                  onClick={onToggleInteractiveMode}
+                  className="px-3 py-1 bg-black text-amber-400 hover:text-white rounded-lg text-xs font-bold transition ml-2 shrink-0"
+                >
+                  Tắt & Về Hát
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* YouTube Player Container */}
           <div className="relative w-full h-full aspect-video flex items-center justify-center">
-            <div id="youtube-player" className="w-full h-full pointer-events-none"></div>
-            {/* Transparent click catcher to toggle play/pause without opening YouTube links */}
+            {/* Persistent unmanaged slot for YouTube IFrame API to prevent React removeChild crashes */}
             <div
-              onClick={onTogglePlay}
-              className="absolute inset-0 cursor-pointer z-10"
-              title="Nhấp để Phát / Tạm dừng"
+              id="youtube-player-slot"
+              className={`w-full h-full rounded-2xl overflow-hidden ${
+                useDirectIframe && currentSong ? 'hidden' : 'block'
+              }`}
             ></div>
+
+            {/* Direct fallback iframe when activated */}
+            {useDirectIframe && currentSong && (
+              <iframe
+                key={currentSong.id}
+                id="youtube-direct-player"
+                src={`https://www.youtube.com/embed/${currentSong.id}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(
+                  typeof window !== 'undefined' ? window.location.origin : ''
+                )}&hl=vi&rel=0&modestbranding=1&controls=0&iv_load_policy=3&playsinline=1`}
+                title={currentSong.title}
+                className="w-full h-full border-0 rounded-2xl"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; microphone"
+                allowFullScreen
+              />
+            )}
+
+            {/* Click to resume badge if autoplay was blocked */}
+            {currentSong && !isPlaying && (
+              <button
+                onClick={onTogglePlay}
+                className="absolute top-4 right-4 z-20 px-3.5 py-1.5 bg-red-600/90 hover:bg-red-600 text-white rounded-xl text-xs font-bold shadow-xl border border-red-400 flex items-center gap-1.5 backdrop-blur-sm transition"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Bấm để tiếp tục phát</span>
+              </button>
+            )}
           </div>
 
           {/* Placeholder when idle */}
           {!currentSong && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-[#181014] to-[#0a0a0c] p-6 text-center z-20">
-              <div className="w-20 h-20 rounded-full bg-red-600/20 border-2 border-red-500 flex items-center justify-center mb-4 animate-pulse">
-                <Mic2 className="w-10 h-10 text-red-500" />
+              <div className="w-16 h-16 rounded-full bg-red-600/20 border-2 border-red-500 flex items-center justify-center mb-3 animate-pulse">
+                <Mic2 className="w-8 h-8 text-red-500" />
               </div>
-              <h2 className="text-2xl lg:text-3xl font-black text-white mb-2">
+              <h2 className="text-2xl lg:text-3xl font-black text-white mb-1.5">
                 SẴN SÀNG HÁT KARAOKE
               </h2>
-              <p className="text-neutral-400 text-sm max-w-md mb-6">
-                Nhập tên bài hát ở thanh tìm kiếm phía trên hoặc quét mã QR bằng điện thoại để bắt đầu hát!
+              <p className="text-neutral-400 text-xs sm:text-sm max-w-md mb-4">
+                Tìm kiếm bài hát trực tiếp từ YouTube, nói vào Micro Remote TV hoặc dùng Điện thoại quét mã QR:
               </p>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap justify-center gap-2.5 mb-5">
                 <button
                   onClick={() => onOpenSearch()}
-                  className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl shadow-lg shadow-red-900/50 flex items-center gap-2 text-sm transition"
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl shadow-lg shadow-red-900/50 flex items-center gap-2 text-xs sm:text-sm transition"
                 >
                   <Search className="w-4 h-4" />
-                  <span>Tìm Kiếm Bài Hát Ngay</span>
+                  <span>Tìm Kiếm Bài Hát</span>
+                </button>
+                <button
+                  onClick={() => onOpenSearch('', true)}
+                  className="px-4 py-2.5 bg-red-950/60 hover:bg-red-900 text-red-300 font-bold rounded-xl border border-red-600/60 flex items-center gap-2 text-xs sm:text-sm transition"
+                >
+                  <Mic className="w-4 h-4 text-red-400" />
+                  <span>Nói Tìm Bài Bằng Mic</span>
                 </button>
                 <button
                   onClick={() => setShowQrModal(true)}
-                  className="px-5 py-3 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-semibold rounded-xl border border-neutral-700 flex items-center gap-2 text-sm transition"
+                  className="px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-semibold rounded-xl border border-neutral-700 flex items-center gap-2 text-xs sm:text-sm transition"
                 >
                   <QrCodeIcon className="w-4 h-4 text-blue-400" />
-                  <span>Quét QR để chọn nhạc</span>
+                  <span>Quét QR Điện Thoại</span>
                 </button>
+              </div>
+
+              {/* Quick live YouTube search topics */}
+              <div className="flex flex-wrap items-center justify-center gap-2 max-w-xl">
+                <span className="text-[11px] text-neutral-400 font-bold mr-1">Tìm nhanh trên YouTube:</span>
+                {[
+                  { label: 'Nhạc Trẻ Mới', query: 'karaoke nhac tre hot' },
+                  { label: 'Bolero Trữ Tình', query: 'karaoke bolero tru tinh' },
+                  { label: 'Remix Sôi Động', query: 'karaoke remix bốc lửa' },
+                  { label: 'Tone Nam', query: 'karaoke tone nam' },
+                  { label: 'Tone Nữ', query: 'karaoke tone nu' },
+                  { label: 'Song Ca', query: 'karaoke song ca nam nu' },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    onClick={() => onOpenSearch(item.query)}
+                    className="px-3 py-1.5 bg-neutral-900/90 hover:bg-red-600/30 border border-neutral-700/80 hover:border-red-500 rounded-xl text-xs font-semibold text-neutral-300 hover:text-white transition flex items-center gap-1.5 shadow"
+                  >
+                    <Search className="w-3 h-3 text-red-500" />
+                    <span>{item.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -538,25 +623,19 @@ export const TVPlayerView: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* SCALED-UP QR CODE CARD (Labeled 'Quét QR để chọn nhạc') */}
+        {/* SCALED-UP QR CODE (Only QR code, enlarged, no text) */}
         <div
           onClick={() => setShowQrModal(true)}
-          className="flex items-center gap-3 bg-neutral-900/90 hover:bg-neutral-850 p-2 rounded-xl border border-neutral-700 cursor-pointer transition hover:border-red-500 group shadow-lg shrink-0"
+          className="bg-neutral-900/90 hover:bg-neutral-800 p-1.5 rounded-2xl border border-neutral-700/80 cursor-pointer transition hover:border-red-500 group shadow-xl shrink-0 flex items-center justify-center active:scale-95"
+          title="Phóng to mã QR"
         >
           {qrDataUrl && (
             <img
               src={qrDataUrl}
               alt="QR Code"
-              className="w-16 h-16 rounded-lg bg-white p-1 shrink-0 shadow"
+              className="w-24 h-24 rounded-xl bg-white p-1 shrink-0 shadow-md transition-transform group-hover:scale-105"
             />
           )}
-          <div className="text-left pr-1">
-            <div className="text-xs font-bold text-white group-hover:text-red-400 flex items-center gap-1.5">
-              <QrCodeIcon className="w-3.5 h-3.5 text-red-500" />
-              Quét QR để chọn nhạc
-            </div>
-            <div className="text-[10px] text-neutral-400 mt-0.5">Mở Camera / Zalo quét</div>
-          </div>
         </div>
       </div>
 

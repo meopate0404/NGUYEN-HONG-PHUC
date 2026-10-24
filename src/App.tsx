@@ -4,14 +4,14 @@ import {
   Tv,
   Smartphone,
   Search,
-  Settings,
+  ShieldCheck,
 } from 'lucide-react';
 import { KaraokeSong } from './data/karaokeCatalog';
 import { TVPlayerView } from './components/TVPlayerView';
 import { MobileRemoteView } from './components/MobileRemoteView';
 import { TVSearchModal } from './components/TVSearchModal';
 import { KaraokeScoreModal } from './components/KaraokeScoreModal';
-import { AndroidTVInstallerModal } from './components/AndroidTVInstallerModal';
+import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { syncEngine, RoomCommand } from './utils/syncEngine';
 
@@ -23,12 +23,11 @@ declare global {
 }
 
 export default function App() {
-  // Mode: TV vs Mobile Remote
+  // Mode: strictly default to TV view ('tv')
   const [mode, setMode] = useState<'tv' | 'mobile'>('tv');
   const [roomCode, setRoomCode] = useState<string>('6868');
-  const [isHeaderVisible, setIsHeaderVisible] = useState(false);
 
-  // Playback state - Completely clean initial queue (no pre-seeded default songs)
+  // Playback state - Completely clean initial queue
   const [currentSong, setCurrentSong] = useState<KaraokeSong | null>(null);
   const [queue, setQueue] = useState<KaraokeSong[]>([]);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -37,10 +36,14 @@ export default function App() {
   const [pitch, setPitch] = useState<number>(0);
   const [speed, setSpeed] = useState<number>(1.0);
 
-  // Modals
+  // Modals & CAPTCHA / Google auth features
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchInitialQuery, setSearchInitialQuery] = useState('');
+  const [searchAutoVoice, setSearchAutoVoice] = useState(false);
   const [isScoreOpen, setIsScoreOpen] = useState(false);
-  const [isInstallerOpen, setIsInstallerOpen] = useState(false);
+  const [isGoogleAuthOpen, setIsGoogleAuthOpen] = useState(false);
+  const [isInteractiveMode, setIsInteractiveMode] = useState(false);
+  const [useDirectIframe, setUseDirectIframe] = useState<boolean>(false);
   const [lastFinishedSongTitle, setLastFinishedSongTitle] = useState('');
 
   const ytPlayerRef = useRef<any>(null);
@@ -84,20 +87,11 @@ export default function App() {
         setRoomCode(urlRoom.toUpperCase());
       }
 
+      // Luôn luôn để app chạy mặc định ở tab 'màn hình tv', chỉ vào mobile khi quét QR (có ?mode=mobile)
       if (urlMode === 'mobile') {
         setMode('mobile');
-      } else if (urlMode === 'tv') {
-        setMode('tv');
       } else {
-        // Auto detect mobile device
-        const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-          navigator.userAgent
-        );
-        if (isMobileDevice) {
-          setMode('mobile');
-        } else {
-          setMode('tv');
-        }
+        setMode('tv');
       }
     }
   }, []);
@@ -145,58 +139,62 @@ export default function App() {
     }
   }, []);
 
-  // Play video with forced 1080p resolution and subtitles disabled
-  const playVideoWith1080p = useCallback((videoId: string) => {
-    setCurrentTime(0);
-    setDuration(0);
-    if (ytPlayerRef.current && ytPlayerRef.current.loadVideoById) {
-      ytPlayerRef.current.loadVideoById({
-        videoId,
-        suggestedQuality: 'hd1080',
-      });
-      try {
-        ytPlayerRef.current.setPlaybackQuality('hd1080');
-        if (ytPlayerRef.current.unloadModule) {
-          ytPlayerRef.current.unloadModule('captions');
-          ytPlayerRef.current.unloadModule('cc');
-        }
-        if (ytPlayerRef.current.setOption) {
-          ytPlayerRef.current.setOption('captions', 'track', {});
-          ytPlayerRef.current.setOption('cc', 'track', {});
-        }
-      } catch (e) {}
-      setIsPlaying(true);
-    }
-  }, []);
+  // YouTube Player initialization with video ID and iframe fallback
+  const initYouTubePlayer = useCallback((videoIdToLoad?: string) => {
+    if (typeof window === 'undefined') return;
+    const slotContainer = document.getElementById('youtube-player-slot');
+    if (!slotContainer) return;
 
-  // YouTube Player initialization (controls: 0 removes YouTube buttons, 'Video khác' recommendations, and YouTube logo)
-  const initYouTubePlayer = useCallback(() => {
-    if (typeof window === 'undefined' || !window.YT || !window.YT.Player) {
+    if (!window.YT || !window.YT.Player) {
+      setUseDirectIframe(true);
       return;
     }
-    const container = document.getElementById('youtube-player');
-    if (!container || ytPlayerRef.current) return;
+
+    const vid = videoIdToLoad || (currentSongRef.current ? currentSongRef.current.id : '');
+    if (!vid) return;
+
+    // If player already exists and is healthy, just load video directly without rebuilding DOM
+    if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+      try {
+        ytPlayerRef.current.loadVideoById({
+          videoId: vid,
+          suggestedQuality: 'hd1080',
+        });
+        ytPlayerRef.current.playVideo();
+        setUseDirectIframe(false);
+        setIsPlaying(true);
+        return;
+      } catch (e) {
+        console.warn('loadVideoById failed, recreating player:', e);
+      }
+    }
 
     try {
+      // Re-create the inner target div without disturbing React's virtual DOM
+      slotContainer.innerHTML = '<div id="youtube-player" style="width:100%;height:100%;"></div>';
+
       ytPlayerRef.current = new window.YT.Player('youtube-player', {
+        host: 'https://www.youtube.com',
         height: '100%',
         width: '100%',
-        videoId: currentSongRef.current ? currentSongRef.current.id : '',
+        videoId: vid,
         playerVars: {
+          origin: typeof window !== 'undefined' ? window.location.origin : '',
           autoplay: 1,
-          controls: 0, // Xoá hoàn toàn thanh điều khiển YouTube (xóa button chia sẻ, xem sau, nút YouTube, đề cử)
-          rel: 0, // Không đề xuất video từ kênh khác
-          modestbranding: 1, // Xóa logo YouTube
+          controls: 0,
+          rel: 0,
+          modestbranding: 1,
           playsinline: 1,
           enablejsapi: 1,
-          cc_load_policy: 0, // Bỏ mở phụ đề trên youtube (tắt captions)
-          iv_load_policy: 3, // Bỏ chú thích video và pop-up 'Video khác'
-          disablekb: 1, // TV remote xử lý phím tắt
-          fs: 0, // Bỏ nút fullscreen mặc định của YouTube
+          cc_load_policy: 0,
+          iv_load_policy: 3,
+          disablekb: 1,
+          fs: 0,
           hl: 'vi',
         },
         events: {
           onReady: (event: any) => {
+            setUseDirectIframe(false);
             try {
               event.target.setPlaybackQuality('hd1080');
               if (event.target.unloadModule) {
@@ -204,9 +202,8 @@ export default function App() {
                 event.target.unloadModule('cc');
               }
             } catch (e) {}
-            if (currentSongRef.current) {
-              event.target.playVideo();
-            }
+            event.target.playVideo();
+            setIsPlaying(true);
           },
           onStateChange: (event: any) => {
             if (event.data === 0) {
@@ -215,40 +212,77 @@ export default function App() {
               setIsScoreOpen(true);
             } else if (event.data === 1) {
               setIsPlaying(true);
-              // Luôn đặt mặc định chất lượng video là 1080p và bỏ phụ đề
-              try {
-                event.target.setPlaybackQuality('hd1080');
-                if (event.target.unloadModule) {
-                  event.target.unloadModule('captions');
-                  event.target.unloadModule('cc');
-                }
-                if (event.target.setOption) {
-                  event.target.setOption('captions', 'track', {});
-                  event.target.setOption('cc', 'track', {});
-                }
-              } catch (e) {}
             } else if (event.data === 2) {
               setIsPlaying(false);
             }
           },
+          onError: (err: any) => {
+            console.warn('YT Player error, falling back to direct iframe:', err);
+            setUseDirectIframe(true);
+          },
         },
       });
     } catch (err) {
-      console.error('Error initializing YouTube player:', err);
+      console.error('Error creating YouTube player, falling back to direct iframe:', err);
+      setUseDirectIframe(true);
     }
   }, []);
 
-  useEffect(() => {
-    if (mode === 'tv') {
-      if (window.YT && window.YT.Player) {
-        initYouTubePlayer();
+  // Play video with forced 1080p resolution and subtitles disabled
+  const playVideoWith1080p = useCallback(
+    (videoId: string) => {
+      if (!videoId) return;
+      setCurrentTime(0);
+      setDuration(0);
+      setIsPlaying(true);
+
+      // Try YouTube IFrame API if ready
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+        try {
+          ytPlayerRef.current.loadVideoById({
+            videoId,
+            suggestedQuality: 'hd1080',
+          });
+          ytPlayerRef.current.playVideo();
+          setUseDirectIframe(false);
+          return;
+        } catch (e) {
+          console.warn('loadVideoById failed, re-initializing player', e);
+        }
+      }
+
+      // Re-initialize player with the videoId
+      if (typeof window !== 'undefined' && window.YT && window.YT.Player) {
+        initYouTubePlayer(videoId);
       } else {
+        // Direct fallback
+        setUseDirectIframe(true);
+      }
+    },
+    [initYouTubePlayer]
+  );
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (window.YT && window.YT.Player) {
+        if (currentSongRef.current) {
+          initYouTubePlayer(currentSongRef.current.id);
+        }
+      } else {
+        const prevReady = window.onYouTubeIframeAPIReady;
         window.onYouTubeIframeAPIReady = () => {
-          initYouTubePlayer();
+          if (prevReady) {
+            try {
+              prevReady();
+            } catch (e) {}
+          }
+          if (currentSongRef.current) {
+            initYouTubePlayer(currentSongRef.current.id);
+          }
         };
       }
     }
-  }, [mode, initYouTubePlayer]);
+  }, [initYouTubePlayer]);
 
   // Play next song
   const handlePlayNext = useCallback(() => {
@@ -453,9 +487,6 @@ export default function App() {
     };
   }, [handleTogglePlay, handlePlayNext, handleReplay, handleToggleMute]);
 
-  const [searchInitialQuery, setSearchInitialQuery] = useState('');
-  const [searchAutoVoice, setSearchAutoVoice] = useState(false);
-
   const handleOpenSearch = useCallback((query: string = '', autoVoice: boolean = false) => {
     setSearchInitialQuery(query);
     setSearchAutoVoice(autoVoice);
@@ -512,121 +543,9 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0c] text-white font-sans antialiased relative">
-      {/* GLOBAL TOP NAVIGATION & MODE SWITCHER (AUTO-HIDING) */}
-      <div
-        className="relative z-50 shrink-0"
-        onMouseEnter={() => setIsHeaderVisible(true)}
-        onMouseLeave={() => setIsHeaderVisible(false)}
-      >
-        {/* Slim hovering trigger handle indicator */}
-        <div
-          className={`fixed top-0 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${
-            isHeaderVisible
-              ? 'opacity-0 pointer-events-none -translate-y-full'
-              : 'opacity-70 hover:opacity-100 translate-y-0'
-          }`}
-        >
-          <button
-            onClick={() => setIsHeaderVisible(true)}
-            className="bg-black/80 hover:bg-black/95 backdrop-blur-md px-3.5 py-1 rounded-b-xl border-x border-b border-neutral-700 text-[11px] font-semibold text-neutral-300 hover:text-white flex items-center gap-1.5 shadow-xl cursor-pointer"
-          >
-            <span>Menu & Chế độ</span>
-            <span className="text-[9px]">▼</span>
-          </button>
-        </div>
-
-        {/* Sliding Header (Auto-hiding on mouse enter/leave) */}
-        <header
-          className={`fixed top-0 left-0 right-0 h-14 bg-[#141417]/95 backdrop-blur-md border-b border-neutral-800 px-4 flex items-center justify-between transition-transform duration-300 shadow-2xl ${
-            isHeaderVisible ? 'translate-y-0' : '-translate-y-full'
-          }`}
-        >
-          {/* Brand - Removed 'TV & REMOTE' per user request */}
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-red-600 to-rose-500 flex items-center justify-center shadow-md shadow-red-900/50">
-              <Mic2 className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <span className="font-black text-sm tracking-wider uppercase text-transparent bg-clip-text bg-gradient-to-r from-white via-neutral-100 to-red-400">
-                OANH ĐIỀN KARAOKE
-              </span>
-            </div>
-          </div>
-
-          {/* Center Mode Switch */}
-          <div className="flex items-center bg-black/60 p-1 rounded-xl border border-neutral-800">
-            <button
-              onClick={() => {
-                setMode('tv');
-                setIsHeaderVisible(false);
-              }}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                mode === 'tv'
-                  ? 'bg-red-600 text-white shadow-md'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              <Tv className="w-3.5 h-3.5" />
-              <span>Màn Hình TV</span>
-            </button>
-            <button
-              onClick={() => {
-                setMode('mobile');
-                setIsHeaderVisible(false);
-              }}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                mode === 'mobile'
-                  ? 'bg-red-600 text-white shadow-md'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span>Điện Thoại (Remote)</span>
-            </button>
-          </div>
-
-          {/* Right Actions: Settings button instead of "Cài APK / Tivi" */}
-          <div className="flex items-center gap-2">
-            <PWAInstallButton />
-            <button
-              onClick={() => setIsInstallerOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white rounded-xl text-xs font-semibold border border-neutral-700 transition shadow"
-              title="Cài đặt & Hướng dẫn sử dụng"
-            >
-              <Settings className="w-3.5 h-3.5 text-amber-400" />
-              <span>Cài đặt</span>
-            </button>
-          </div>
-        </header>
-      </div>
-
-      {/* VIEW CONTAINER */}
+      {/* VIEW CONTAINER - STRICTLY DEFAULT TO TV PLAYER VIEW */}
       <main className="flex-1 flex overflow-hidden">
-        {mode === 'tv' ? (
-          <TVPlayerView
-            currentSong={currentSong}
-            queue={queue}
-            isPlaying={isPlaying}
-            isMuted={isMuted}
-            volume={volume}
-            pitch={pitch}
-            speed={speed}
-            roomCode={roomCode}
-            mobileUrl={mobileUrl}
-            onPlayNext={handlePlayNext}
-            onTogglePlay={handleTogglePlay}
-            onReplay={handleReplay}
-            onToggleMute={handleToggleMute}
-            onRemoveFromQueue={handleRemoveFromQueue}
-            onPrioritize={handlePrioritize}
-            onOpenSearch={handleOpenSearch}
-            onOpenInstaller={() => setIsInstallerOpen(true)}
-            onTriggerScore={() => setIsScoreOpen(true)}
-            currentTime={currentTime}
-            duration={duration}
-            onSeek={handleSeek}
-          />
-        ) : (
+        {mode === 'mobile' ? (
           <MobileRemoteView
             currentSong={currentSong}
             queue={queue}
@@ -654,6 +573,34 @@ export default function App() {
             }}
             onSwitchToTV={() => setMode('tv')}
           />
+        ) : (
+          <TVPlayerView
+            currentSong={currentSong}
+            queue={queue}
+            isPlaying={isPlaying}
+            isMuted={isMuted}
+            volume={volume}
+            pitch={pitch}
+            speed={speed}
+            roomCode={roomCode}
+            mobileUrl={mobileUrl}
+            onPlayNext={handlePlayNext}
+            onTogglePlay={handleTogglePlay}
+            onReplay={handleReplay}
+            onToggleMute={handleToggleMute}
+            onRemoveFromQueue={handleRemoveFromQueue}
+            onPrioritize={handlePrioritize}
+            onOpenSearch={handleOpenSearch}
+            onTriggerScore={() => setIsScoreOpen(true)}
+            onOpenGoogleAuth={() => setIsGoogleAuthOpen(true)}
+            isInteractiveMode={isInteractiveMode}
+            onToggleInteractiveMode={() => setIsInteractiveMode((prev) => !prev)}
+            currentTime={currentTime}
+            duration={duration}
+            onSeek={handleSeek}
+            useDirectIframe={useDirectIframe}
+            onSelectSong={handleAddToQueue}
+          />
         )}
       </main>
 
@@ -678,11 +625,11 @@ export default function App() {
         onClose={() => setIsScoreOpen(false)}
       />
 
-      <AndroidTVInstallerModal
-        isOpen={isInstallerOpen}
-        onClose={() => setIsInstallerOpen(false)}
-        appUrl={appUrl}
-        roomCode={roomCode}
+      <GoogleAuthModal
+        isOpen={isGoogleAuthOpen}
+        onClose={() => setIsGoogleAuthOpen(false)}
+        isInteractiveMode={isInteractiveMode}
+        onToggleInteractiveMode={() => setIsInteractiveMode((prev) => !prev)}
       />
     </div>
   );
