@@ -92,6 +92,16 @@ class RoomSyncEngine {
     } catch (e) {
       console.warn('SSE connection failed, relying on local sync', e);
     }
+
+    // Immediately fetch current room state from server upon connecting
+    fetch(`/api/room/${encodeURIComponent(this.currentRoomId)}/state`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && (data.currentSong !== undefined || data.queue !== undefined)) {
+          this.notifyState(data);
+        }
+      })
+      .catch(() => {});
   }
 
   public onCommand(listener: CommandListener) {

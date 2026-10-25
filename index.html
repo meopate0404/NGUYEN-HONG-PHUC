@@ -87,11 +87,20 @@
     <!-- Script error safety net -->
     <script>
       window.addEventListener('error', function(e) {
+        if (e && e.message && (e.message.includes('WebSocket') || e.message.includes('ws://') || e.message.includes('wss://'))) {
+          e.preventDefault && e.preventDefault();
+          return;
+        }
         var errEl = document.getElementById('tv-boot-error');
         var msgEl = document.getElementById('tv-boot-error-msg');
         if (errEl && msgEl && (!window.React || !document.querySelector('main'))) {
           errEl.style.display = 'block';
           msgEl.innerText = e.message || 'Lỗi tải tệp mã nguồn ứng dụng trên TV.';
+        }
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        if (e && e.reason && typeof e.reason.message === 'string' && (e.reason.message.includes('WebSocket') || e.reason.message.includes('ws://'))) {
+          e.preventDefault && e.preventDefault();
         }
       });
     </script>

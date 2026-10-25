@@ -6,14 +6,13 @@ import {
   Search,
   ShieldCheck,
 } from 'lucide-react';
-import { KaraokeSong } from './data/karaokeCatalog';
+import { KaraokeSong, POPULAR_KARAOKE_SONGS } from './data/karaokeCatalog';
 import { TVPlayerView } from './components/TVPlayerView';
 import { MobileRemoteView } from './components/MobileRemoteView';
 import { TVSearchModal } from './components/TVSearchModal';
 import { KaraokeScoreModal } from './components/KaraokeScoreModal';
-import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { PWAInstallButton } from './components/PWAInstallButton';
-import { syncEngine, RoomCommand } from './utils/syncEngine';
+import { syncEngine, RoomCommand, AppSyncState } from './utils/syncEngine';
 
 declare global {
   interface Window {
@@ -36,13 +35,11 @@ export default function App() {
   const [pitch, setPitch] = useState<number>(0);
   const [speed, setSpeed] = useState<number>(1.0);
 
-  // Modals & CAPTCHA / Google auth features
+  // Modals & player states
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchInitialQuery, setSearchInitialQuery] = useState('');
   const [searchAutoVoice, setSearchAutoVoice] = useState(false);
   const [isScoreOpen, setIsScoreOpen] = useState(false);
-  const [isGoogleAuthOpen, setIsGoogleAuthOpen] = useState(false);
-  const [isInteractiveMode, setIsInteractiveMode] = useState(false);
   const [useDirectIframe, setUseDirectIframe] = useState<boolean>(false);
   const [lastFinishedSongTitle, setLastFinishedSongTitle] = useState('');
 
@@ -182,7 +179,7 @@ export default function App() {
       slotContainer.innerHTML = '<div id="youtube-player" style="width:100%;height:100%;"></div>';
 
       ytPlayerRef.current = new window.YT.Player('youtube-player', {
-        host: 'https://www.youtube.com',
+        host: 'https://www.youtube-nocookie.com',
         height: '100%',
         width: '100%',
         videoId: vid,
@@ -495,6 +492,38 @@ export default function App() {
     };
   }, [handleTogglePlay, handlePlayNext, handleReplay, handleToggleMute]);
 
+  // 1. Authoritative TV Broadcast: TV syncs state to server & mobile remotes
+  useEffect(() => {
+    if (mode === 'tv') {
+      syncEngine.syncState({
+        roomId: roomCode,
+        currentSong,
+        queue,
+        isPlaying,
+        isMuted,
+        volume,
+        pitch,
+        speed,
+      });
+    }
+  }, [mode, roomCode, currentSong, queue, isPlaying, isMuted, volume, pitch, speed]);
+
+  // 2. Mobile Remote Sync: Mobile listens and mirrors the TV state seamlessly
+  useEffect(() => {
+    if (mode === 'mobile') {
+      const unsub = syncEngine.onState((state: AppSyncState) => {
+        if (state.currentSong !== undefined) setCurrentSong(state.currentSong);
+        if (state.queue !== undefined) setQueue(state.queue);
+        if (state.isPlaying !== undefined) setIsPlaying(state.isPlaying);
+        if (state.isMuted !== undefined) setIsMuted(state.isMuted);
+        if (state.volume !== undefined) setVolume(state.volume);
+        if (state.pitch !== undefined) setPitch(state.pitch);
+        if (state.speed !== undefined) setSpeed(state.speed);
+      });
+      return () => unsub();
+    }
+  }, [mode]);
+
   const handleOpenSearch = useCallback((query: string = '', autoVoice: boolean = false) => {
     setSearchInitialQuery(query);
     setSearchAutoVoice(autoVoice);
@@ -547,7 +576,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleTogglePlay, handlePlayNext, handleReplay, handleToggleMute]);
+  }, [handleTogglePlay, handlePlayNext, handleReplay, handleToggleMute, handleOpenSearch]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0c] text-white font-sans antialiased relative">
@@ -557,7 +586,7 @@ export default function App() {
           <MobileRemoteView
             currentSong={currentSong}
             queue={queue}
-            catalog={[]}
+            catalog={POPULAR_KARAOKE_SONGS}
             isPlaying={isPlaying}
             isMuted={isMuted}
             volume={volume}
@@ -600,9 +629,6 @@ export default function App() {
             onPrioritize={handlePrioritize}
             onOpenSearch={handleOpenSearch}
             onTriggerScore={() => setIsScoreOpen(true)}
-            onOpenGoogleAuth={() => setIsGoogleAuthOpen(true)}
-            isInteractiveMode={isInteractiveMode}
-            onToggleInteractiveMode={() => setIsInteractiveMode((prev) => !prev)}
             currentTime={currentTime}
             duration={duration}
             onSeek={handleSeek}
@@ -621,7 +647,7 @@ export default function App() {
           setSearchAutoVoice(false);
         }}
         onSelectSong={handleAddToQueue}
-        catalog={[]}
+        catalog={POPULAR_KARAOKE_SONGS}
         initialQuery={searchInitialQuery}
         autoVoice={searchAutoVoice}
       />
@@ -631,13 +657,6 @@ export default function App() {
         songTitle={lastFinishedSongTitle || currentSong?.title || ''}
         onNext={handlePlayNext}
         onClose={() => setIsScoreOpen(false)}
-      />
-
-      <GoogleAuthModal
-        isOpen={isGoogleAuthOpen}
-        onClose={() => setIsGoogleAuthOpen(false)}
-        isInteractiveMode={isInteractiveMode}
-        onToggleInteractiveMode={() => setIsInteractiveMode((prev) => !prev)}
       />
     </div>
   );

@@ -17,8 +17,6 @@ import {
   Music,
   Mic2,
   Award,
-  ShieldCheck,
-  MousePointer,
 } from 'lucide-react';
 import { KaraokeSong } from '../data/karaokeCatalog';
 
@@ -40,9 +38,6 @@ interface Props {
   onPrioritize: (index: number) => void;
   onOpenSearch: (initialQuery?: string, autoVoice?: boolean) => void;
   onTriggerScore: () => void;
-  onOpenGoogleAuth?: () => void;
-  isInteractiveMode?: boolean;
-  onToggleInteractiveMode?: () => void;
   currentTime?: number;
   duration?: number;
   onSeek?: (seconds: number) => void;
@@ -75,9 +70,6 @@ export const TVPlayerView: React.FC<Props> = ({
   onPrioritize,
   onOpenSearch,
   onTriggerScore,
-  onOpenGoogleAuth,
-  isInteractiveMode = false,
-  onToggleInteractiveMode,
   currentTime = 0,
   duration = 0,
   onSeek,
@@ -259,16 +251,6 @@ export const TVPlayerView: React.FC<Props> = ({
 
         {/* Quick action buttons */}
         <div className="flex items-center gap-2 shrink-0">
-          {onOpenGoogleAuth && (
-            <button
-              onClick={onOpenGoogleAuth}
-              title="Đăng nhập tài khoản Google & Khắc phục CAPTCHA"
-              className="px-3 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white rounded-xl text-xs font-bold border border-neutral-700 transition flex items-center gap-1.5 shadow"
-            >
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Đăng nhập Google / CAPTCHA</span>
-            </button>
-          )}
           <button
             onClick={onTriggerScore}
             title="Chấm điểm Karaoke"
@@ -291,26 +273,6 @@ export const TVPlayerView: React.FC<Props> = ({
       <div className="flex-1 flex flex-row p-2.5 gap-2.5 min-h-0 overflow-hidden">
         {/* SCALED-UP VIDEO PLAYER VIEW (Takes maximal space) */}
         <div className="flex-1 bg-black rounded-2xl overflow-hidden border border-neutral-800 shadow-2xl relative flex items-center justify-center group">
-          {/* Interactive Mouse / CAPTCHA banner indicator */}
-          {isInteractiveMode && (
-            <div className="absolute top-3 left-3 right-3 z-30 bg-amber-500 text-black font-extrabold px-4 py-2 rounded-xl shadow-2xl flex items-center justify-between text-xs animate-in slide-in-from-top duration-200">
-              <div className="flex items-center gap-2">
-                <MousePointer className="w-4 h-4" />
-                <span>
-                  Đang bật chế độ chuột tương tác TV! Dùng chuột / remote nhấp thẳng vào ô CAPTCHA hoặc nút Đăng nhập trên video.
-                </span>
-              </div>
-              {onToggleInteractiveMode && (
-                <button
-                  onClick={onToggleInteractiveMode}
-                  className="px-3 py-1 bg-black text-amber-400 hover:text-white rounded-lg text-xs font-bold transition ml-2 shrink-0"
-                >
-                  Tắt & Về Hát
-                </button>
-              )}
-            </div>
-          )}
-
           {/* YouTube Player Container */}
           <div className="relative w-full h-full aspect-video flex items-center justify-center">
             {/* Persistent unmanaged slot for YouTube IFrame API to prevent React removeChild crashes */}
@@ -321,12 +283,12 @@ export const TVPlayerView: React.FC<Props> = ({
               }`}
             ></div>
 
-            {/* Direct fallback iframe when activated */}
+            {/* Direct fallback iframe when activated (using youtube-nocookie for ad-free clean playback) */}
             {useDirectIframe && currentSong && (
               <iframe
                 key={currentSong.id}
                 id="youtube-direct-player"
-                src={`https://www.youtube.com/embed/${currentSong.id}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(
+                src={`https://www.youtube-nocookie.com/embed/${currentSong.id}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(
                   typeof window !== 'undefined' ? window.location.origin : ''
                 )}&hl=vi&rel=0&modestbranding=1&controls=0&iv_load_policy=3&playsinline=1`}
                 title={currentSong.title}
